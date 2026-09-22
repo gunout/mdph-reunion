@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDPH La Réunion - Tableau de Bord Expert</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            /* Palette tricolore institutionnelle */
+            --bleu-france: #000091;      /* Bleu Marianne officiel */
+            --bleu-clair: #6A6AF4;       /* Bleu clair officiel */
+            --bleu-pale: #E3E3FD;        /* Bleu très pâle officiel */
+            --bleu-fonce: #1212FF;
+            --blanc: #FFFFFF;
+            --rouge-marianne: #E1000F;   /* Rouge Marianne officiel */
+            --rouge-clair: #FF5C5C;
+            --rouge-pale: #FDE3E3;
+
+            /* Palette dérivée */
+            --primary: var(--bleu-france);
+            --secondary: var(--rouge-marianne);
+            --success: #18753C;
+            --warning: #B34000;
+            --danger: var(--rouge-marianne);
+            --purple: #6E445A;
+            --teal: #0063CB;
+            --dark: #161616;
+            --grey-light: #F6F6F6;
+            --grey-border: #DDDDDD;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Marianne', 'Segoe UI', sans-serif; }
+        body {
+            background: linear-gradient(180deg, var(--bleu-pale) 0%, #F6F6F6 300px, #F6F6F6 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1500px; margin: 0 auto; }
+
+        /* Bandeau tricolore en haut de page */
+        .tricolore-band {
+            height: 6px;
+            display: flex;
+            border-radius: 15px 15px 0 0;
+            overflow: hidden;
+            margin-bottom: 0;
+        }
+        .tricolore-band > div { flex: 1; }
+        .tricolore-band .bleu { background: var(--bleu-france); }
+        .tricolore-band .blanc { background: var(--blanc); }
+        .tricolore-band .rouge { background: var(--rouge-marianne); }
+
+        .header {
+            background: linear-gradient(135deg, var(--bleu-france), #00006B);
+            color: white; padding: 25px 35px; border-radius: 0 0 15px 15px;
+            margin-bottom: 25px; display: flex; justify-content: space-between;
+            align-items: center; flex-wrap: wrap; gap: 15px;
+            box-shadow: 0 4px 16px rgba(0,0,145,0.15);
+        }
+        .header h1 { font-size: 1.5rem; }
+        .header h1 .flag-accent {
+            display: inline-block;
+            width: 4px; height: 26px;
+            background: linear-gradient(180deg, var(--bleu-france) 33%, var(--blanc) 33% 66%, var(--rouge-marianne) 66%);
+            vertical-align: middle;
+            margin-right: 12px;
+            border-radius: 2px;
+        }
+        .header-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .badge {
+            padding: 8px 14px; border-radius: 20px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.25);
+            font-size: 0.8rem; display: flex; align-items: center; gap: 6px;
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #B8FEC9; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .btn-pdf {
+            background: var(--rouge-marianne); color: white; border: none;
+            padding: 10px 20px; border-radius: 8px; cursor: pointer;
+            font-weight: 600; display: flex; align-items: center; gap: 8px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(225,0,15,0.3);
+        }
+        .btn-pdf:hover { background: #C5000D; transform: translateY(-1px); }
+        .btn-pdf:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .filters-bar {
+            background: white; border-radius: 12px; padding: 18px 22px;
+            margin-bottom: 20px; display: flex; gap: 20px; align-items: center;
+            flex-wrap: wrap; box-shadow: 0 2px 8px rgba(0,0,145,0.06);
+            border-top: 3px solid var(--bleu-france);
+        }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 0.75rem; font-weight: 600; color: var(--bleu-france); text-transform: uppercase; letter-spacing: 0.5px; }
+        select, input[type="text"] {
+            padding: 8px 12px; border: 2px solid var(--grey-border); border-radius: 8px;
+            font-size: 0.9rem; background: white; min-width: 160px;
+            transition: border-color 0.2s;
+        }
+        select:focus, input:focus { outline: none; border-color: var(--bleu-france); box-shadow: 0 0 0 3px var(--bleu-pale); }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; margin-bottom: 22px; }
+        .card {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,145,0.06);
+            border-left: 4px solid var(--bleu-france);
+            position: relative;
+            transition: transform 0.2s;
+        }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,145,0.12); }
+        .card-value { font-size: 1.8rem; font-weight: 700; color: var(--bleu-france); }
+        .card-label { font-size: 0.85rem; color: #444; margin-top: 4px; font-weight: 500; }
+        .card-detail { font-size: 0.75rem; color: #777; margin-top: 6px; }
+        .card-source { font-size: 0.65rem; color: #AAA; margin-top: 8px; font-style: italic; }
+        .trend-up { color: var(--success); font-size: 0.8rem; font-weight: 600; }
+        .trend-down { color: var(--rouge-marianne); font-size: 0.8rem; font-weight: 600; }
+
+        .benchmark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-bottom: 22px; }
+        .benchmark-card {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,145,0.06);
+            border-top: 3px solid var(--rouge-marianne);
+            position: relative;
+        }
+        .benchmark-card::before {
+            content: '';
+            position: absolute;
+            top: -3px; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, var(--bleu-france) 0%, var(--bleu-france) 33%, white 33% 66%, var(--rouge-marianne) 66%);
+            border-radius: 12px 12px 0 0;
+        }
+        .benchmark-title {
+            font-size: 0.8rem; color: var(--bleu-france); font-weight: 700;
+            text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;
+        }
+        .benchmark-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #F3F4F6; }
+        .benchmark-row:last-child { border-bottom: none; }
+        .benchmark-label { font-size: 0.85rem; color: #444; }
+        .benchmark-value { font-size: 0.95rem; font-weight: 700; }
+        .benchmark-reunion { color: var(--bleu-france); }
+        .benchmark-france { color: #6B7280; }
+        .benchmark-ecart { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+        .ecart-positif { background: #DCFCE7; color: #166534; }
+        .ecart-negatif { background: var(--rouge-pale); color: var(--rouge-marianne); }
+        .ecart-neutre { background: #F3F4F6; color: #6B7280; }
+
+        .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 20px; margin-bottom: 22px; }
+        .chart-card {
+            background: white; border-radius: 12px; padding: 22px;
+            box-shadow: 0 2px 8px rgba(0,0,145,0.06);
+            border-top: 3px solid var(--bleu-france);
+            transition: transform 0.2s;
+        }
+        .chart-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,145,0.1); }
+        .chart-card h3 { font-size: 0.95rem; margin-bottom: 15px; color: var(--bleu-france); display: flex; align-items: center; gap: 8px; font-weight: 600; }
+        .chart-container { position: relative; height: 300px; }
+        .chart-container-tall { position: relative; height: 350px; }
+
+        .table-section { background: white; border-radius: 12px; padding: 22px; box-shadow: 0 2px 8px rgba(0,0,145,0.06); margin-bottom: 22px; border-top: 3px solid var(--bleu-france); }
+        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .table-header h3 { color: var(--bleu-france); font-size: 0.95rem; }
+        .table-container { overflow-x: auto; max-height: 400px; overflow-y: auto; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        thead { background: var(--bleu-france); color: white; position: sticky; top: 0; }
+        th { padding: 12px 15px; text-align: left; cursor: pointer; user-select: none; }
+        th:hover { background: #00006B; }
+        td { padding: 10px 15px; border-bottom: 1px solid #EEF; }
+        tbody tr:hover { background: var(--bleu-pale); }
+        tbody tr:nth-child(even) { background: #FAFAFF; }
+        tbody tr:nth-child(even):hover { background: var(--bleu-pale); }
+
+        .loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95); display: none; justify-content: center;
+            align-items: center; z-index: 1000; flex-direction: column; gap: 15px;
+        }
+        .loader.active { display: flex; }
+        .spinner {
+            width: 45px; height: 45px; border: 4px solid #EEE;
+            border-top-color: var(--bleu-france); border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .info-box {
+            background: var(--bleu-pale); border-left: 4px solid var(--bleu-france);
+            padding: 15px; border-radius: 8px; font-size: 0.85rem;
+            color: var(--bleu-france); margin-bottom: 20px;
+        }
+        .insight-box {
+            background: var(--rouge-pale); border-left: 4px solid var(--rouge-marianne);
+            padding: 15px; border-radius: 8px; font-size: 0.85rem;
+            color: #8B0008; margin-bottom: 20px;
+        }
+        .insight-box strong { color: var(--rouge-marianne); }
+
+        .error-box {
+            background: var(--rouge-pale); border-left: 4px solid var(--rouge-marianne);
+            padding: 15px; border-radius: 8px; color: #8B0008; margin-bottom: 20px; font-size: 0.85rem;
+        }
+
+        .expert-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+            margin-left: 8px;
+        }
+        .expert-officiel { background: var(--bleu-pale); color: var(--bleu-france); }
+        .expert-benchmark { background: var(--rouge-pale); color: var(--rouge-marianne); }
+        .expert-projection { background: #F3E8FF; color: #6B21A8; }
+
+        /* Petite bande tricolore de séparation */
+        .tricolore-sep {
+            height: 3px; border-radius: 2px;
+            background: linear-gradient(90deg,
+                var(--bleu-france) 0%, var(--bleu-france) 33%,
+                #E5E7EB 33%, #E5E7EB 66%,
+                var(--rouge-marianne) 66%);
+            margin: 22px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="loader" id="loader"><div class="spinner"></div><p id="loader-text">Chargement des données...</p></div>
+
+<div class="container" id="dashboard">
+    <div class="tricolore-band">
+        <div class="bleu"></div>
+        <div class="blanc"></div>
+        <div class="rouge"></div>
+    </div>
+    <div class="header">
+        <h1><span class="flag-accent"></span>MDPH La Réunion — Tableau de Bord Expert</h1>
+        <div class="header-actions">
+            <span class="badge"><span class="dot"></span> data.caf.fr + data.gouv.fr + DREES</span>
+            <button class="btn-pdf" onclick="exportPDF()" id="pdf-btn">📄 Télécharger PDF</button>
+        </div>
+    </div>
+
+    <div class="info-box">
+        <strong>📡 Sources :</strong> API OpenDataSoft data.caf.fr, data.gouv.fr (évolution AAH/AEEH 2012-2021), DREES (benchmarks), INSEE (démographie), CNSA (baromètre MDPH).
+        <strong>Dernière mise à jour :</strong> <span id="last-update">—</span>
+    </div>
+
+    <div class="insight-box" id="insight-box">
+        <strong>💡 Analyse :</strong> Chargement des données en cours...
+    </div>
+
+    <div id="error-container"></div>
+
+    <div class="filters-bar">
+        <div class="filter-group">
+            <label>Période (AAH mensuel)</label>
+            <select id="filter-periode" onchange="applyFilters()">
+                <option value="all">Tout (2016-2026)</option>
+                <option value="12">12 derniers mois</option>
+                <option value="24">24 derniers mois</option>
+                <option value="60">5 dernières années</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Vue</label>
+            <select id="filter-vue" onchange="applyFilters()">
+                <option value="mensuel">Mensuel</option>
+                <option value="trimestriel">Trimestriel</option>
+                <option value="annuel">Annuel</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Recherche tableau</label>
+            <input type="text" id="search-table" placeholder="Filtrer par période..." oninput="filterTable()">
+        </div>
+    </div>
+
+    <div class="grid" id="kpi-container"></div>
+
+    <div class="tricolore-sep"></div>
+
+    <div class="benchmark-grid" id="benchmark-container"></div>
+
+    <div class="tricolore-sep"></div>
+
+    <div class="chart-grid">
+        <div class="chart-card">
+            <h3>📈 Évolution mensuelle des bénéficiaires AAH (CAF)</h3>
+            <div class="chart-container-tall"><canvas id="chart-evolution"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>📊 Comparaison AAH vs AEEH (2012-2021, data.gouv.fr)</h3>
+            <div class="chart-container-tall"><canvas id="chart-historique"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>🎯 Répartition par taux d'incapacité (dernière période)</h3>
+            <div class="chart-container"><canvas id="chart-taux"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>👥 Répartition par tranche d'âge (2026-02)</h3>
+            <div class="chart-container"><canvas id="chart-age"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>💰 Répartition par type de complément AAH</h3>
+            <div class="chart-container"><canvas id="chart-complement"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>📉 Taux de croissance annuel AAH et AEEH</h3>
+            <div class="chart-container"><canvas id="chart-croissance"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>🔮 Projection linéaire AAH à 24 mois <span class="expert-badge expert-projection">Projection</span></h3>
+            <div class="chart-container"><canvas id="chart-projection"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>⚠️ Détection d'anomalies (écart > 2σ)</h3>
+            <div class="chart-container"><canvas id="chart-anomalies"></canvas></div>
+        </div>
+    </div>
+
+    <div class="table-section">
+        <div class="table-header">
+            <h3>📋 Données brutes — évolution AAH</h3>
+            <span style="font-size:0.8rem;color:#6B7280;" id="table-count">— lignes</span>
+        </div>
+        <div class="table-container">
+            <table id="data-table">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Période ↕</th>
+                        <th onclick="sortTable(1)">Bénéficiaires ↕</th>
+                        <th onclick="sortTable(2)">Variation ↕</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Enregistrement du plugin d'annotation Chart.js
+if (typeof Chart !== 'undefined' && window['chartjs-plugin-annotation']) {
+    Chart.register(window['chartjs-plugin-annotation']);
+}
+
+// ============================================
+// PALETTE TRICOLORE POUR LES GRAPHIQUES
+// ============================================
+const TRICOLORE = {
+    bleu: '#000091',        // Bleu Marianne
+    bleuClair: '#6A6AF4',
+    bleuPale: '#E3E3FD',
+    rouge: '#E1000F',       // Rouge Marianne
+    rougeClair: '#FF5C5C',
+    rougePale: '#FDE3E3',
+    gris: '#6B7280',
+    grisClair: '#E5E7EB'
+};
+
+// ============================================
+// DONNÉES DE BENCHMARK (sources officielles)
+// ============================================
+const BENCHMARKS = {
+    population: { reunion: 911000, label: "Population", source: "INSEE 2026" },
+    tauxAAH: { reunion: 43.4, france: 33.0, label: "Taux AAH (pour 1000 hab. 20-64 ans)", source: "DREES 2022" },
+    tauxPauvrete: { reunion: 32.8, france: 14.4, label: "Taux de pauvreté (%)", source: "INSEE 2024" },
+    basRevenus: { reunion: 54.3, france: 34.8, label: "Bénéficiaires AAH sous bas revenus (%)", source: "DREES 2022" },
+    delaiAdultes: { reunion: 3.99, france: 4.6, label: "Délai traitement adultes (mois)", source: "MDPH Réunion 2024 / CNSA" },
+    delaiEnfants: { reunion: 7.92, france: 4.0, label: "Délai traitement enfants (mois)", source: "MDPH Réunion 2024 / CNSA" },
+    satisfaction: { reunion: null, france: 70, label: "Satisfaction usagers (%)", source: "CNSA 2025" }
+};
+
+// ============================================
+// ÉTAT GLOBAL
+// ============================================
+let rawEvolution = [];
+let rawTaux = [];
+let rawAge = [];
+let rawComplement = [];
+let rawTauxPleinPartiel = [];
+let rawHistoriqueAAH = [];
+let rawHistoriqueAEEH = [];
+let filteredEvolution = [];
+let currentSort = { col: 0, asc: true };
+const charts = {};
+const DATA_DIR = 'data';
+
+// ============================================
+// UTILITAIRE
+// ============================================
+function getDerniereDate(data) {
+    if (!data.length) return '2026-02';
+    return [...data].sort((a, b) => a.date.localeCompare(b.date)).pop().date;
+}
+
+// ============================================
+// CHARGEMENT
+// ============================================
+function loadCSV(filename) {
+    return new Promise((resolve, reject) => {
+        Papa.parse(`${DATA_DIR}/${filename}`, {
+            download: true, header: true, dynamicTyping: true, skipEmptyLines: true,
+            complete: (r) => resolve(r.data),
+            error: (e) => reject(e)
+        });
+    });
+}
+
+async function loadAllData() {
+    showLoader(true, 'Chargement des fichiers CSV...');
+    clearError();
+
+    try {
+        const results = await Promise.all([
+            loadCSV('aah_reunion_evolution.csv').catch(() => []),
+            loadCSV('aah_reunion_aah_taux_incapacite.csv').catch(() => []),
+            loadCSV('aah_reunion_age.csv').catch(() => []),
+            loadCSV('aah_reunion_aah_complement_age.csv').catch(() => []),
+            loadCSV('aah_reunion_aah_taux_plein_partiel.csv').catch(() => []),
+            loadCSV('aah_reunion_depuis_2012.csv').catch(() => []),
+            loadCSV('aeeh_reunion.csv').catch(() => [])
+        ]);
+
+        const [evolution, taux, age, complement, tauxPleinPartiel, histAAH, histAEEH] = results;
+
+        rawEvolution = evolution.filter(r => r.date && typeof r.beneficiaires === 'number' && r.beneficiaires > 100);
+        rawTaux = taux.filter(r => r.date && r.aah_tx_inca && typeof r.beneficiaires === 'number' && r.beneficiaires > 10);
+        rawAge = age.filter(r => r.age && typeof r.beneficiaires === 'number' && r.beneficiaires > 0);
+        rawComplement = complement.filter(r => r.date && r.aah_complaah && typeof r.beneficiaires === 'number' && r.beneficiaires > 0);
+        rawTauxPleinPartiel = tauxPleinPartiel.filter(r => r.date && r.aah_tx && typeof r.beneficiaires === 'number' && r.beneficiaires > 0);
+        rawHistoriqueAAH = histAAH.filter(r => r.date && typeof r.beneficiaires === 'number');
+        rawHistoriqueAEEH = histAEEH.filter(r => r.date && typeof r.beneficiaires === 'number');
+
+        console.log('✅ Evolution:', rawEvolution.length, 'lignes');
+        console.log('✅ Taux incapacité:', rawTaux.length, 'lignes');
+        console.log('✅ Âge:', rawAge.length, 'lignes');
+        console.log('✅ Complément:', rawComplement.length, 'lignes');
+        console.log('✅ Taux plein/partiel:', rawTauxPleinPartiel.length, 'lignes');
+        console.log('✅ Historique AAH:', rawHistoriqueAAH.length, 'lignes');
+        console.log('✅ Historique AEEH:', rawHistoriqueAEEH.length, 'lignes');
+
+        document.getElementById('last-update').textContent = new Date().toLocaleString('fr-FR');
+
+        applyFilters();
+        renderBenchmarks();
+        renderHistorique();
+        renderCroissance();
+        renderProjection();
+        renderAnomalies();
+        updateInsight();
+
+        showLoader(false);
+    } catch (err) {
+        showLoader(false);
+        console.error('❌ Erreur:', err);
+        showError(`Erreur de chargement : ${err.message}.`);
+    }
+}
+
+// ============================================
+// FILTRES
+// ============================================
+function applyFilters() {
+    const periode = document.getElementById('filter-periode').value;
+    const vue = document.getElementById('filter-vue').value;
+    const cutoff = periode === 'all' ? '2016-01' : shiftMonth(getDerniereDate(rawEvolution), -parseInt(periode));
+    filteredEvolution = aggregate(rawEvolution.filter(r => r.date >= cutoff), vue, 'beneficiaires');
+    renderKPIs();
+    renderCharts();
+    renderTable();
+}
+
+function shiftMonth(dateStr, delta) {
+    const [y, m] = dateStr.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function aggregate(data, vue, field) {
+    if (vue === 'mensuel') return [...data].sort((a, b) => a.date.localeCompare(b.date));
+    const map = {};
+    data.forEach(r => {
+        let key;
+        if (vue === 'annuel') { key = r.date.substring(0, 4); }
+        else {
+            const [y, m] = r.date.split('-').map(Number);
+            key = `${y}-T${Math.ceil(m / 3)}`;
+        }
+        map[key] = (map[key] || 0) + (r[field] || 0);
+    });
+    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([date, beneficiaires]) => ({ date, beneficiaires }));
+}
+
+// ============================================
+// KPIs
+// ============================================
+function renderKPIs() {
+    const container = document.getElementById('kpi-container');
+    if (!filteredEvolution.length) {
+        container.innerHTML = '<div class="card"><div class="card-value">—</div><div class="card-label">Aucune donnée</div></div>';
+        return;
+    }
+    const vue = document.getElementById('filter-vue').value;
+    const sorted = [...filteredEvolution].sort((a, b) => a.date.localeCompare(b.date));
+    const latest = sorted[sorted.length - 1];
+    const first = sorted[0];
+    const growth = ((latest.beneficiaires / first.beneficiaires) - 1) * 100;
+
+    let variationLabel, variationValue, comparaisonDetail;
+    if (vue === 'annuel') {
+        const anneePrec = (parseInt(latest.date) - 1).toString();
+        const n1 = sorted.find(r => r.date === anneePrec);
+        variationLabel = "Variation vs N-1";
+        variationValue = n1 ? ((latest.beneficiaires - n1.beneficiaires) / n1.beneficiaires * 100).toFixed(1) : '—';
+        comparaisonDetail = n1 ? `${n1.beneficiaires.toLocaleString('fr-FR')} → ${latest.beneficiaires.toLocaleString('fr-FR')}` : `Année ${anneePrec} non disponible`;
+    } else if (vue === 'trimestriel') {
+        const [y, t] = latest.date.split('-T').map(Number);
+        let py = y, pt = t - 1;
+        if (pt < 1) { pt = 4; py = y - 1; }
+        const tPrec = `${py}-T${pt}`;
+        const n1 = sorted.find(r => r.date === tPrec);
+        variationLabel = "Variation vs T-1";
+        variationValue = n1 ? ((latest.beneficiaires - n1.beneficiaires) / n1.beneficiaires * 100).toFixed(1) : '—';
+        comparaisonDetail = n1 ? `${n1.beneficiaires.toLocaleString('fr-FR')} → ${latest.beneficiaires.toLocaleString('fr-FR')}` : `Trimestre ${tPrec} non disponible`;
+    } else {
+        const unAnAvant = sorted.find(r => r.date === shiftMonth(latest.date, -12));
+        variationLabel = "Variation sur 12 mois";
+        variationValue = unAnAvant ? ((latest.beneficiaires - unAnAvant.beneficiaires) / unAnAvant.beneficiaires * 100).toFixed(1) : '—';
+        comparaisonDetail = unAnAvant ? `${unAnAvant.beneficiaires.toLocaleString('fr-FR')} → ${latest.beneficiaires.toLocaleString('fr-FR')}` : '12 mois avant non disponible';
+    }
+
+    const pop20_64 = Math.round(BENCHMARKS.population.reunion * 0.65);
+    const tauxCouverture = ((latest.beneficiaires / pop20_64) * 1000).toFixed(1);
+    const cagr = computeCAGR(sorted);
+    const derniers = sorted.slice(-Math.min(12, sorted.length));
+    const moyenne12 = derniers.reduce((s, r) => s + r.beneficiaires, 0) / derniers.length;
+    const variationColor = parseFloat(variationValue) >= 0 ? 'var(--success)' : 'var(--rouge-marianne)';
+
+    container.innerHTML = `
+        <div class="card">
+            <div class="card-value">${latest.beneficiaires.toLocaleString('fr-FR')}</div>
+            <div class="card-label">Bénéficiaires AAH (${latest.date})</div>
+            <div class="card-detail">Source : CAF / data.caf.fr</div>
+            <div class="card-source">Données officielles CAF</div>
+        </div>
+        <div class="card" style="border-left-color: var(--teal);">
+            <div class="card-value" style="color: var(--teal);">${tauxCouverture}‰</div>
+            <div class="card-label">Taux de couverture</div>
+            <div class="card-detail">${latest.beneficiaires.toLocaleString('fr-FR')} / ${pop20_64.toLocaleString('fr-FR')} hab. 20-64 ans</div>
+            <div class="card-source">INSEE 2026 · DREES 2022</div>
+        </div>
+        <div class="card" style="border-left-color: ${variationColor};">
+            <div class="card-value" style="color: ${variationColor};">${variationValue}%</div>
+            <div class="card-label">${variationLabel}</div>
+            <div class="card-detail">${comparaisonDetail}</div>
+            <div class="card-source">Calculé sur la vue ${vue}</div>
+        </div>
+        <div class="card" style="border-left-color: var(--purple);">
+            <div class="card-value" style="color: var(--purple);">${cagr}%</div>
+            <div class="card-label">Croissance annualisée (CAGR)</div>
+            <div class="card-detail">Tendance lissée sur la période</div>
+            <div class="card-source">Calculé sur ${sorted.length} points</div>
+        </div>
+        <div class="card" style="border-left-color: var(--warning);">
+            <div class="card-value" style="color: var(--warning);">${moyenne12.toLocaleString('fr-FR', {maximumFractionDigits: 0})}</div>
+            <div class="card-label">Moyenne mobile 12 mois</div>
+            <div class="card-detail">Tendance court terme</div>
+            <div class="card-source">Moyenne glissante</div>
+        </div>
+    `;
+}
+
+function computeCAGR(series) {
+    if (series.length < 2) return '—';
+    const first = series[0].beneficiaires;
+    const last = series[series.length - 1].beneficiaires;
+    const years = (series.length - 1) / 12;
+    if (first <= 0 || years <= 0) return '—';
+    return ((Math.pow(last / first, 1 / years) - 1) * 100).toFixed(2);
+}
+
+// ============================================
+// BENCHMARKS
+// ============================================
+function renderBenchmarks() {
+    const container = document.getElementById('benchmark-container');
+    if (!container) return;
+    const rows = [];
+
+    if (BENCHMARKS.tauxAAH.reunion && BENCHMARKS.tauxAAH.france) {
+        const ecart = ((BENCHMARKS.tauxAAH.reunion / BENCHMARKS.tauxAAH.france - 1) * 100).toFixed(0);
+        rows.push({ label: BENCHMARKS.tauxAAH.label, reunion: BENCHMARKS.tauxAAH.reunion.toFixed(1) + '‰', france: BENCHMARKS.tauxAAH.france.toFixed(1) + '‰', ecart: '+' + ecart + '%', ecartClass: 'ecart-positif', source: BENCHMARKS.tauxAAH.source });
+    }
+    if (BENCHMARKS.tauxPauvrete.reunion) {
+        const ecart = ((BENCHMARKS.tauxPauvrete.reunion / BENCHMARKS.tauxPauvrete.france - 1) * 100).toFixed(0);
+        rows.push({ label: BENCHMARKS.tauxPauvrete.label, reunion: BENCHMARKS.tauxPauvrete.reunion.toFixed(1) + '%', france: BENCHMARKS.tauxPauvrete.france.toFixed(1) + '%', ecart: '+' + ecart + '%', ecartClass: 'ecart-positif', source: BENCHMARKS.tauxPauvrete.source });
+    }
+    if (BENCHMARKS.basRevenus.reunion && BENCHMARKS.basRevenus.france) {
+        const ecart = (BENCHMARKS.basRevenus.reunion - BENCHMARKS.basRevenus.france).toFixed(0);
+        rows.push({ label: BENCHMARKS.basRevenus.label, reunion: BENCHMARKS.basRevenus.reunion.toFixed(1) + '%', france: BENCHMARKS.basRevenus.france.toFixed(1) + '%', ecart: '+' + ecart + ' pts', ecartClass: 'ecart-positif', source: BENCHMARKS.basRevenus.source });
+    }
+    if (BENCHMARKS.delaiAdultes.reunion && BENCHMARKS.delaiAdultes.france) {
+        const ecart = (BENCHMARKS.delaiAdultes.reunion - BENCHMARKS.delaiAdultes.france).toFixed(1);
+        rows.push({ label: BENCHMARKS.delaiAdultes.label, reunion: BENCHMARKS.delaiAdultes.reunion.toFixed(2) + ' mois', france: BENCHMARKS.delaiAdultes.france.toFixed(1) + ' mois', ecart: ecart + ' mois', ecartClass: parseFloat(ecart) <= 0 ? 'ecart-positif' : 'ecart-negatif', source: BENCHMARKS.delaiAdultes.source });
+    }
+    if (BENCHMARKS.delaiEnfants.reunion && BENCHMARKS.delaiEnfants.france) {
+        const ecart = (BENCHMARKS.delaiEnfants.reunion - BENCHMARKS.delaiEnfants.france).toFixed(1);
+        rows.push({ label: BENCHMARKS.delaiEnfants.label, reunion: BENCHMARKS.delaiEnfants.reunion.toFixed(2) + ' mois', france: BENCHMARKS.delaiEnfants.france.toFixed(1) + ' mois', ecart: '+' + ecart + ' mois', ecartClass: 'ecart-negatif', source: BENCHMARKS.delaiEnfants.source });
+    }
+    if (BENCHMARKS.satisfaction.france) {
+        rows.push({ label: BENCHMARKS.satisfaction.label, reunion: '—', france: BENCHMARKS.satisfaction.france + '%', ecart: '—', ecartClass: 'ecart-neutre', source: BENCHMARKS.satisfaction.source });
+    }
+
+    if (!rows.length) {
+        container.innerHTML = '<div class="benchmark-card"><p style="color:#9CA3AF;">Aucun benchmark disponible</p></div>';
+        return;
+    }
+
+    container.innerHTML = rows.map(r => `
+        <div class="benchmark-card">
+            <div class="benchmark-title">${r.label}</div>
+            <div class="benchmark-row"><span class="benchmark-label">La Réunion</span><span class="benchmark-value benchmark-reunion">${r.reunion}</span></div>
+            <div class="benchmark-row"><span class="benchmark-label">France</span><span class="benchmark-value benchmark-france">${r.france}</span></div>
+            <div class="benchmark-row"><span class="benchmark-label">Écart</span><span class="benchmark-ecart ${r.ecartClass}">${r.ecart}</span></div>
+            <div class="card-source">${r.source}</div>
+        </div>
+    `).join('');
+}
+
+// ============================================
+// GRAPHIQUES
+// ============================================
+function renderCharts() {
+    ['evolution', 'taux', 'age', 'complement'].forEach(k => {
+        if (charts[k]) { try { charts[k].destroy(); } catch (e) {} }
+    });
+    renderEvolutionChart();
+    renderTauxChart();
+    renderAgeChart();
+    renderComplementChart();
+}
+
+function renderEvolutionChart() {
+    if (!filteredEvolution.length) return;
+    const sorted = [...filteredEvolution].sort((a, b) => a.date.localeCompare(b.date));
+    const annotations = {};
+    const covidStart = sorted.findIndex(r => r.date === '2020-03');
+    const covidEnd = sorted.findIndex(r => r.date === '2021-06');
+    if (covidStart >= 0 && covidEnd >= 0) {
+        annotations.covid = {
+            type: 'box', xMin: sorted[covidStart].date, xMax: sorted[covidEnd].date,
+            backgroundColor: 'rgba(225,0,15,0.06)',
+            borderColor: 'rgba(225,0,15,0.3)', borderWidth: 1,
+            label: { display: true, content: 'COVID-19', position: 'start', color: TRICOLORE.rouge, font: { size: 10 } }
+        };
+    }
+    charts.evolution = new Chart(document.getElementById('chart-evolution'), {
+        type: 'line',
+        data: {
+            labels: sorted.map(d => d.date),
+            datasets: [{
+                label: 'Bénéficiaires AAH',
+                data: sorted.map(d => d.beneficiaires),
+                borderColor: TRICOLORE.bleu,
+                backgroundColor: 'rgba(0,0,145,0.1)',
+                fill: true, tension: 0.3, pointRadius: 3,
+                pointBackgroundColor: TRICOLORE.bleu
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, annotation: { annotations } },
+            scales: { y: { beginAtZero: false } }
+        }
+    });
+}
+
+function renderTauxChart() {
+    const ctx = document.getElementById('chart-taux');
+    if (!ctx || !rawTaux.length) {
+        if (ctx) ctx.parentElement.innerHTML = '<p style="text-align:center;color:#9CA3AF;padding:40px;">Données non disponibles</p>';
+        return;
+    }
+    const dernierePeriode = getDerniereDate(rawTaux);
+    const latest = rawTaux.filter(r => r.date === dernierePeriode);
+    if (!latest.length) return;
+    charts.taux = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: latest.map(r => r.aah_tx_inca),
+            datasets: [{ data: latest.map(r => r.beneficiaires), backgroundColor: [TRICOLORE.bleu, TRICOLORE.rouge, TRICOLORE.bleuClair, TRICOLORE.rougeClair] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, cutout: '55%' }
+    });
+}
+
+function renderAgeChart() {
+    const ctx = document.getElementById('chart-age');
+    if (!ctx || !rawAge.length) {
+        if (ctx) ctx.parentElement.innerHTML = '<p style="text-align:center;color:#9CA3AF;padding:40px;">Données non disponibles</p>';
+        return;
+    }
+    const ordre = ['Moins de 20 ans','Entre 20 et 24 ans','Entre 25 et 29 ans','Entre 30 et 34 ans','Entre 35 et 39 ans','Entre 40 et 44 ans','Entre 45 et 49 ans','Entre 50 et 54 ans','Entre 55 et 59 ans','Entre 60 et 64 ans','65 ans ou plus'];
+    const sorted = [...rawAge].sort((a, b) => {
+        const ia = ordre.indexOf(a.age), ib = ordre.indexOf(b.age);
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+    charts.age = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sorted.map(r => r.age),
+            datasets: [{ label: 'Bénéficiaires', data: sorted.map(r => r.beneficiaires), backgroundColor: TRICOLORE.bleu, borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+}
+
+function renderComplementChart() {
+    const ctx = document.getElementById('chart-complement');
+    if (!ctx || !rawComplement.length) {
+        if (ctx) ctx.parentElement.innerHTML = '<p style="text-align:center;color:#9CA3AF;padding:40px;">Données non disponibles</p>';
+        return;
+    }
+    const dernierePeriode = getDerniereDate(rawComplement);
+    const latest = rawComplement.filter(r => r.date === dernierePeriode);
+    const aggregated = {};
+    latest.forEach(r => { const key = r.aah_complaah || 'Inconnu'; aggregated[key] = (aggregated[key] || 0) + r.beneficiaires; });
+    charts.complement = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(aggregated),
+            datasets: [{ label: 'Bénéficiaires', data: Object.values(aggregated), backgroundColor: TRICOLORE.rouge, borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+}
+
+function renderHistorique() {
+    if (charts.historique) { try { charts.historique.destroy(); } catch (e) {} }
+    const ctx = document.getElementById('chart-historique');
+    if (!ctx || (!rawHistoriqueAAH.length && !rawHistoriqueAEEH.length)) {
+        if (ctx) ctx.parentElement.innerHTML = '<p style="text-align:center;color:#9CA3AF;padding:40px;">Données non disponibles</p>';
+        return;
+    }
+    const allDates = [...new Set([...rawHistoriqueAAH.map(r => r.date), ...rawHistoriqueAEEH.map(r => r.date)])].sort();
+    const aahData = allDates.map(d => rawHistoriqueAAH.find(r => r.date === d)?.beneficiaires ?? null);
+    const aeehData = allDates.map(d => rawHistoriqueAEEH.find(r => r.date === d)?.beneficiaires ?? null);
+    charts.historique = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: allDates.map(d => d.substring(0, 4)),
+            datasets: [
+                { label: 'AAH', data: aahData, borderColor: TRICOLORE.bleu, backgroundColor: 'rgba(0,0,145,0.1)', fill: true, tension: 0.3, pointRadius: 4 },
+                { label: 'AEEH', data: aeehData, borderColor: TRICOLORE.rouge, backgroundColor: 'rgba(225,0,15,0.1)', fill: true, tension: 0.3, pointRadius: 4 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: false } } }
+    });
+}
+
+function renderCroissance() {
+    if (charts.croissance) { try { charts.croissance.destroy(); } catch (e) {} }
+    const ctx = document.getElementById('chart-croissance');
+    if (!ctx) return;
+    const dates = [...new Set(rawHistoriqueAAH.map(r => r.date))].sort();
+    if (dates.length < 2) { ctx.parentElement.innerHTML = '<p style="text-align:center;color:#9CA3AF;padding:40px;">Données insuffisantes</p>'; return; }
+    const aahSorted = dates.map(d => rawHistoriqueAAH.find(r => r.date === d)?.beneficiaires || 0);
+    const aeehSorted = dates.map(d => rawHistoriqueAEEH.find(r => r.date === d)?.beneficiaires || 0);
+    const croissanceAAH = aahSorted.slice(1).map((v, i) => aahSorted[i] ? parseFloat(((v - aahSorted[i]) / aahSorted[i] * 100).toFixed(2)) : 0);
+    const croissanceAEEH = aeehSorted.slice(1).map((v, i) => aeehSorted[i] ? parseFloat(((v - aeehSorted[i]) / aeehSorted[i] * 100).toFixed(2)) : 0);
+    charts.croissance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: dates.slice(1).map(d => d.substring(0, 4)),
+            datasets: [
+                { label: 'Croissance AAH (%)', data: croissanceAAH, backgroundColor: TRICOLORE.bleu, borderRadius: 4 },
+                { label: 'Croissance AEEH (%)', data: croissanceAEEH, backgroundColor: TRICOLORE.rouge, borderRadius: 4 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, title: { display: true, text: '%' } } } }
+    });
+}
+
+function renderProjection() {
+    if (charts.projection) { try { charts.projection.destroy(); } catch (e) {} }
+    const ctx = document.getElementById('chart-projection');
+    if (!ctx || !rawEvolution.length) return;
+    const sorted = [...rawEvolution].sort((a, b) => a.date.localeCompare(b.date));
+    if (sorted.length < 6) { ctx.parentElement.innerHTML = '<p style="text-align:center;color:#9CA3AF;padding:40px;">Données insuffisantes</p>'; return; }
+    const recent = sorted.slice(-24);
+    const xMean = (recent.length - 1) / 2;
+    const yMean = recent.reduce((s, d) => s + d.beneficiaires, 0) / recent.length;
+    let num = 0, den = 0;
+    recent.forEach((d, i) => { num += (i - xMean) * (d.beneficiaires - yMean); den += (i - xMean) ** 2; });
+    const slope = num / den, intercept = yMean - slope * xMean;
+    const projection = [];
+    const lastDate = new Date(sorted[sorted.length - 1].date + '-01');
+    for (let i = 1; i <= 24; i++) {
+        const d = new Date(lastDate);
+        d.setMonth(d.getMonth() + i);
+        projection.push({ date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, beneficiaires: Math.round(intercept + slope * (recent.length - 1 + i)) });
+    }
+    const labels = [...sorted.slice(-24).map(d => d.date), ...projection.map(d => d.date)];
+    const valuesReels = [...sorted.slice(-24).map(d => d.beneficiaires), ...projection.map(() => null)];
+    const valuesProj = [...sorted.slice(-24).map(() => null), ...projection.map(d => d.beneficiaires)];
+    charts.projection = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Réel (24 mois)', data: valuesReels, borderColor: TRICOLORE.bleu, backgroundColor: 'rgba(0,0,145,0.1)', fill: true, tension: 0.3, pointRadius: 2 },
+                { label: 'Projection (24 mois)', data: valuesProj, borderColor: TRICOLORE.rouge, backgroundColor: 'rgba(225,0,15,0.08)', borderDash: [5, 5], fill: true, tension: 0.3, pointRadius: 2 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: false } } }
+    });
+}
+
+function renderAnomalies() {
+    if (charts.anomalies) { try { charts.anomalies.destroy(); } catch (e) {} }
+    const ctx = document.getElementById('chart-anomalies');
+    if (!ctx || !rawEvolution.length) return;
+    const sorted = [...rawEvolution].sort((a, b) => a.date.localeCompare(b.date));
+    const values = sorted.map(d => d.beneficiaires);
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const std = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length);
+    const seuilHaut = mean + 2 * std, seuilBas = mean - 2 * std;
+    charts.anomalies = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: sorted.map(d => d.date),
+            datasets: [
+                {
+                    label: 'Bénéficiaires', data: values,
+                    borderColor: TRICOLORE.bleu, backgroundColor: 'rgba(0,0,145,0.05)',
+                    fill: true, tension: 0.3, pointRadius: 0,
+                    pointBackgroundColor: sorted.map(d => Math.abs(d.beneficiaires - mean) > 2 * std ? TRICOLORE.rouge : TRICOLORE.bleu),
+                    pointRadius: sorted.map(d => Math.abs(d.beneficiaires - mean) > 2 * std ? 6 : 2)
+                },
+                { label: 'Seuil +2σ', data: sorted.map(() => seuilHaut), borderColor: TRICOLORE.rouge, borderDash: [5, 5], pointRadius: 0, fill: false },
+                { label: 'Seuil -2σ', data: sorted.map(() => seuilBas), borderColor: TRICOLORE.rouge, borderDash: [5, 5], pointRadius: 0, fill: false }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: false } } }
+    });
+}
+
+// ============================================
+// ANALYSE
+// ============================================
+function updateInsight() {
+    const box = document.getElementById('insight-box');
+    if (!rawHistoriqueAAH.length || !rawHistoriqueAEEH.length) {
+        box.innerHTML = '<strong>💡 Analyse :</strong> Chargement en cours...';
+        return;
+    }
+    const aahStart = rawHistoriqueAAH[0].beneficiaires;
+    const aahEnd = rawHistoriqueAAH[rawHistoriqueAAH.length - 1].beneficiaires;
+    const aeehStart = rawHistoriqueAEEH[0].beneficiaires;
+    const aeehEnd = rawHistoriqueAEEH[rawHistoriqueAEEH.length - 1].beneficiaires;
+    const growthAAH = ((aahEnd / aahStart - 1) * 100).toFixed(0);
+    const growthAEEH = ((aeehEnd / aeehStart - 1) * 100).toFixed(0);
+    const tauxCouverture = BENCHMARKS.tauxAAH.reunion || 43.4;
+    const tauxFrance = BENCHMARKS.tauxAAH.france || 33.0;
+    const ecart = ((tauxCouverture / tauxFrance - 1) * 100).toFixed(0);
+
+    box.innerHTML = `
+        <strong>💡 Analyse contextuelle (2012-2021) :</strong>
+        L'AAH progresse de <strong>+${growthAAH}%</strong> (${aahStart.toLocaleString('fr-FR')} → ${aahEnd.toLocaleString('fr-FR')})
+        tandis que l'AEEH explose de <strong>+${growthAEEH}%</strong> (${aeehStart.toLocaleString('fr-FR')} → ${aeehEnd.toLocaleString('fr-FR')}).
+        Avec un taux de couverture de <strong>${tauxCouverture}‰</strong> contre <strong>${tauxFrance}‰</strong> en France
+        (<strong>+${ecart}%</strong>), La Réunion présente une prévalence du handicap nettement supérieure à la moyenne nationale,
+        couplée à un taux de pauvreté de <strong>32,8%</strong> et <strong>54,3%</strong> des allocataires AAH sous le seuil de bas revenus.
+        La MDPH traite les demandes adultes en <strong>3,99 mois</strong> (mieux que la moyenne nationale de 4,6 mois) mais
+        les demandes enfants en <strong>7,92 mois</strong> (nettement au-dessus de la moyenne nationale de 4 mois).
+    `;
+}
+
+// ============================================
+// TABLEAU
+// ============================================
+function renderTable() {
+    const tbody = document.getElementById('table-body');
+    const search = document.getElementById('search-table').value.toLowerCase();
+    let data = filteredEvolution.filter(r => r.date.toLowerCase().includes(search));
+    if (currentSort.asc) {
+        data.sort((a, b) => currentSort.col === 0 ? a.date.localeCompare(b.date) : a.beneficiaires - b.beneficiaires);
+    } else {
+        data.sort((a, b) => currentSort.col === 0 ? b.date.localeCompare(a.date) : b.beneficiaires - a.beneficiaires);
+    }
+    tbody.innerHTML = data.map((r, i) => {
+        const prev = data[i - 1];
+        const variation = prev ? ((r.beneficiaires - prev.beneficiaires) / prev.beneficiaires * 100).toFixed(2) : '—';
+        const varClass = parseFloat(variation) >= 0 ? 'trend-up' : 'trend-down';
+        return `<tr><td><strong>${r.date}</strong></td><td>${r.beneficiaires.toLocaleString('fr-FR')}</td><td class="${varClass}">${prev ? (parseFloat(variation) >= 0 ? '+' : '') + variation + '%' : '—'}</td></tr>`;
+    }).join('');
+    document.getElementById('table-count').textContent = `${data.length} lignes`;
+}
+
+function sortTable(col) {
+    if (currentSort.col === col) currentSort.asc = !currentSort.asc;
+    else { currentSort.col = col; currentSort.asc = true; }
+    renderTable();
+}
+function filterTable() { renderTable(); }
+
+// ============================================
+// EXPORT PDF
+// ============================================
+async function exportPDF() {
+    const btn = document.getElementById('pdf-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Génération...';
+    try {
+        const element = document.getElementById('dashboard');
+        const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+        const imgData = canvas.toDataURL('image/png', 1.0);
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = 210, pdfHeight = 297;
+        const imgWidth = pdfWidth, imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight, position = 0;
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+        while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pdfHeight;
+        }
+        pdf.save(`rapport_mdph_reunion_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+        console.error('Erreur PDF :', err);
+        alert('Erreur lors de la génération du PDF.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📄 Télécharger PDF';
+    }
+}
+
+// ============================================
+// UTILITAIRES
+// ============================================
+function showLoader(show, text) {
+    document.getElementById('loader').classList.toggle('active', show);
+    if (text) document.getElementById('loader-text').textContent = text;
+}
+function showError(msg) { document.getElementById('error-container').innerHTML = `<div class="error-box">⚠️ ${msg}</div>`; }
+function clearError() { document.getElementById('error-container').innerHTML = ''; }
+
+document.addEventListener('DOMContentLoaded', loadAllData);
+</script>
+
+</body>
+</html>
